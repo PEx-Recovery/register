@@ -59,7 +59,7 @@ export async function middleware(request: NextRequest) {
 
   // Refresh session if expired - required for Server Components
   // We keep this part.
-  await supabase.auth.getSession()
+  //await supabase.auth.getSession()
 
   // --- ADDED: STATE MANAGEMENT "BOUNCER" LOGIC ---
   const { pathname } = request.nextUrl
