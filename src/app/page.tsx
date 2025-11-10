@@ -1,12 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // <-- 1. IMPORT THE ROUTER
+import { useRouter } from "next/navigation";
 
-// We aren't using createClient in this file, but it's good to keep for later
-// import { createClient } from "@/lib/supabase/client";
-
-// Define the structure of a Group
 interface Group {
   id: string;
   name: string;
@@ -18,7 +14,6 @@ interface Group {
   distance_meters: number | null;
 }
 
-// Define the structure of the Geolocation position
 interface GeolocationPosition {
   coords: {
     latitude: number;
@@ -26,18 +21,17 @@ interface GeolocationPosition {
   };
 }
 
-// Define the structure of the Geolocation error
 interface GeolocationError {
   code: number;
   message: string;
 }
 
 export default function Home() {
-  const router = useRouter(); // <-- 2. INITIALIZE THE ROUTER
+  const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>("");
   const [email, setEmail] = useState<string>("");
-  const [isNoEmail, setIsNoEmail] = useState(false); // <-- "No Email" state
+  const [isNoEmail, setIsNoEmail] = useState(false);
   const [status, setStatus] = useState<
     "loading" | "error" | "success" | "idle" | "submitting"
   >("loading");
@@ -48,37 +42,41 @@ export default function Home() {
     longitude: number;
   } | null>(null);
 
-  // Get the Supabase URL and Key from environment variables
   const functionsUrl = process.env.NEXT_PUBLIC_FUNCTIONS_URL;
-
-  // *** DEBUGGING LINE ADDED HERE ***
-  console.log("Functions URL:", functionsUrl);
-  // *******************************
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   useEffect(() => {
     const fetchGroups = (position: GeolocationPosition | null) => {
-      // --- Add a check to make sure the URL is defined ---
       if (!functionsUrl) {
         console.error("Functions URL is not defined!");
         setErrorMessage(
-          "Configuration error: Missing functions URL. Check .env.local file."
+          "Configuration error: Missing functions URL. Check environment variables."
         );
         setStatus("error");
         return;
       }
-      // --------------------------------------------------
+
+      if (!supabaseAnonKey) {
+        console.error("Supabase anon key is not defined!");
+        setErrorMessage(
+          "Configuration error: Missing Supabase key. Check environment variables."
+        );
+        setStatus("error");
+        return;
+      }
 
       let url = "";
       let options: RequestInit = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+          // ✅ FIXED: Include both apikey AND Authorization header
+          "apikey": supabaseAnonKey,
+          "Authorization": `Bearer ${supabaseAnonKey}`,
         },
       };
 
       if (position) {
-        // If we have location, call the distance function
         url = `${functionsUrl}/get-groups-by-distance`;
         options.body = JSON.stringify({
           latitude: position.coords.latitude,
@@ -89,19 +87,17 @@ export default function Home() {
           longitude: position.coords.longitude,
         });
       } else {
-        // Fallback: call the day sorting function
         url = `${functionsUrl}/get-groups-by-day`;
-        const sundayZeroToSaturdaySix = new Date().getUTCDay(); // 0..6
-        const isoOneToSeven = ((sundayZeroToSaturdaySix + 6) % 7) + 1; // 1..7
+        const sundayZeroToSaturdaySix = new Date().getUTCDay();
+        const isoOneToSeven = ((sundayZeroToSaturdaySix + 6) % 7) + 1;
         options.body = JSON.stringify({ day_of_week: isoOneToSeven });
       }
 
       fetch(url, options)
         .then((res) => {
           if (!res.ok) {
-            // Handle non-JSON or other network errors
             return res.json().then((err) => {
-              throw new Error(err.message || "Network response was not ok");
+              throw new Error(err.message || `HTTP ${res.status}: ${res.statusText}`);
             });
           }
           return res.json();
@@ -111,29 +107,25 @@ export default function Home() {
             throw new Error(data.error);
           }
           setGroups(data.groups || []);
-          setStatus("success"); // Set status to success
+          setStatus("success");
         })
         .catch((err) => {
           console.error("Failed to fetch groups:", err);
-          // Updated error message to be more specific
-          setErrorMessage(`Failed to fetch groups: ${err.message}. Is Supabase running?`);
+          setErrorMessage(`Failed to fetch groups: ${err.message}`);
           setStatus("error");
         });
     };
 
-    // --- Geolocation Logic ---
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position: GeolocationPosition) => {
-          // Success: We have a location
           fetchGroups(position);
         },
         (err: GeolocationError) => {
-          // Error: User denied or location failed
           setErrorMessage(
             `Geolocation failed (${err.message}). Sorting by day.`
           );
-          fetchGroups(null); // Call the fallback
+          fetchGroups(null);
         },
         {
           enableHighAccuracy: true,
@@ -142,38 +134,36 @@ export default function Home() {
         }
       );
     } else {
-      // Error: Browser doesn't support geolocation
       setErrorMessage("Geolocation not supported. Sorting by day.");
-      fetchGroups(null); // Call the fallback
+      fetchGroups(null);
     }
-  }, [functionsUrl]); // Rerun effect if functionsUrl changes
+  }, [functionsUrl, supabaseAnonKey]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMessage("");
     setErrorMessage("");
-    setStatus("submitting"); // Set status to 'submitting'
+    setStatus("submitting");
 
     if (!selectedGroup || (!email && !isNoEmail)) {
       setErrorMessage("Please select a group and enter your email (or check the box).");
-      setStatus("idle"); // Reset status on error
+      setStatus("idle");
       return;
     }
 
     const group = groups.find((g) => g.id === selectedGroup);
     if (!group) {
       setErrorMessage("Selected group not found.");
-      setStatus("idle"); // Reset status on error
+      setStatus("idle");
       return;
     }
 
-    // --- UX CHECK (Client-side) ---
     if (group.format === "In-person") {
       if (!userLocation || group.distance_meters === null) {
         setErrorMessage(
           "Could not verify your location for this in-person group."
         );
-        setStatus("idle"); // Reset status on error
+        setStatus("idle");
         return;
       }
 
@@ -183,12 +173,11 @@ export default function Home() {
             group.distance_meters
           )}m) to sign in. You must be within 200m.`
         );
-        setStatus("idle"); // Reset status on error
+        setStatus("idle");
         return;
       }
     }
     
-    // --- THE REAL SUBMISSION (Server-side) ---
     try {
       const response = await fetch('/api/check-in', {
         method: 'POST',
@@ -196,7 +185,7 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: isNoEmail ? null : email, // Pass null if checkbox is checked
+          email: isNoEmail ? null : email,
           groupId: selectedGroup,
           isNoEmail: isNoEmail, 
           geolocation: userLocation, 
@@ -211,17 +200,14 @@ export default function Home() {
         return;
       }
 
-      // --- 3. FIX THE AUTO-REDIRECT ---
-      // These are no longer commented out
       switch (data.status) {
         case 'CHECKIN_COMPLETE':
-          router.push('/complete'); // Redirect to complete page
+          router.push('/complete');
           break;
         case 'ORIENTATION_REQUIRED':
-          router.push('/orientation'); // Redirect to orientation page
+          router.push('/orientation');
           break;
         case 'NO_EMAIL_INFO_REQUIRED':
-          // This path will now also go to the orientation page
           router.push('/orientation'); 
           break;
       }
@@ -313,14 +299,13 @@ export default function Home() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required={!isNoEmail} // Required only if checkbox is NOT checked
-                disabled={isNoEmail} // Disable if checkbox is checked
+                required={!isNoEmail}
+                disabled={isNoEmail}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 placeholder="you@example.com"
               />
             </div>
 
-            {/* --- This is the "No Email" checkbox --- */}
             <div className="flex items-center">
               <input
                 id="isNoEmail"
