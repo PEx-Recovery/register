@@ -1,0 +1,13 @@
+node_modules
+src/.DS_Store
+supabase/.temp
+supabase/deno.lock
+supabase/.DS_Store
+.DS_Store
+Api Stuff
+Function Curls.txt
+README.md
+deno.lock
+generating-auth-token.md
+next-env.d.ts
+src/lib/whatever

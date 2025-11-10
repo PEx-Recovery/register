@@ -19,13 +19,8 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      },
-    );
+      Deno.env.get("SUPABASE_ANON_KEY")!
+);
 
     const { data, error } = await supabase.rpc(
       "get_groups_sorted_by_distance",

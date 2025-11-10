@@ -133,7 +133,7 @@ export async function POST(request: Request) {
         first_name: member.first_name,
         last_name: member.last_name,
         phone: member.phone,
-        dob: member.dob,
+        date_of_birth: member.dob,
         gender: member.gender,
         ethnicity: member.ethnicity,
         reason_for_attending: member.reason_for_attending,
