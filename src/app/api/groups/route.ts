@@ -1,6 +1,6 @@
 // src/app/api/groups/route.ts
 
-export const runtime = 'nodejs';
+export const dynamic = 'force_dynamic';
 import { createClient } from '../../../lib/supabase/server'
 import { NextResponse } from 'next/server'
 
