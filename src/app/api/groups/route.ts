@@ -1,3 +1,6 @@
+// src/app/api/groups/route.ts
+
+export const runtime = 'nodejs';
 import { createClient } from '../../../lib/supabase/server'
 import { NextResponse } from 'next/server'
 

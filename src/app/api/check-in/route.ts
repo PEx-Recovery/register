@@ -1,6 +1,8 @@
 // src/app/api/check-in/route.ts
 // This is the full, updated code for this file.
+// src/app/api/check-in/route.ts
 
+export const runtime = 'nodejs';
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid' 

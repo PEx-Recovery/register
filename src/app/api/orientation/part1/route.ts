@@ -1,6 +1,8 @@
 // src/app/api/orientation/part1/route.ts
 // This is a NEW FILE
+// src/app/api/orientation/part1/route.ts
 
+export const runtime = 'nodejs';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
