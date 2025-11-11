@@ -23,8 +23,8 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")!,
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")!,
     );
 
     // Prefer parameterized RPC if provided; else call no-arg fallback
