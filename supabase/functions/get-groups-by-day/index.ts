@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")??,
-      Deno.env.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")??,
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY")??,
       {
         global:{headers:{Authorization: req.headers.get("Authorization")!}},
       }
