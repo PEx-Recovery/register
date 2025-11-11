@@ -18,8 +18,11 @@ Deno.serve(async (req) => {
     const { latitude, longitude } = await req.json();
 
     const supabase = createClient(
-      Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")!,
-      Deno.env.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")!,
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")??,
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")??,
+      {
+        global:{headers:{Authorization: req.headers.get("Authorization")!}},
+      }
     );
 
     const { data, error } = await supabase.rpc(
