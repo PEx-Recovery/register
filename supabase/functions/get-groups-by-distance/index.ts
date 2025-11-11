@@ -18,9 +18,9 @@ Deno.serve(async (req) => {
     const { latitude, longitude } = await req.json();
 
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
-);
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")!,
+      Deno.env.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")!,
+    );
 
     const { data, error } = await supabase.rpc(
       "get_groups_sorted_by_distance",
