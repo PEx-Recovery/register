@@ -11,3 +11,4 @@ deno.lock
 generating-auth-token.md
 next-env.d.ts
 src/lib/whatever
+.vercel
