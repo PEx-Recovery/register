@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 interface Group {
   id: string;
@@ -42,86 +43,84 @@ export default function Home() {
     longitude: number;
   } | null>(null);
 
-  const functionsUrl = process.env.NEXT_PUBLIC_FUNCTIONS_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Create Supabase client
+  const supabase = createClient();
 
   useEffect(() => {
-    const fetchGroups = (position: GeolocationPosition | null) => {
-      if (!functionsUrl) {
-        console.error("Functions URL is not defined!");
-        setErrorMessage(
-          "Configuration error: Missing functions URL. Check environment variables."
-        );
-        setStatus("error");
-        return;
-      }
+    const fetchGroups = async (position: GeolocationPosition | null) => {
+      try {
+        if (position) {
+          // User has geolocation - fetch groups sorted by distance
+          console.log("Fetching groups by distance with position:", {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          });
 
-      if (!supabaseAnonKey) {
-        console.error("Supabase anon key is not defined!");
-        setErrorMessage(
-          "Configuration error: Missing Supabase key. Check environment variables."
-        );
-        setStatus("error");
-        return;
-      }
+          const { data, error } = await supabase.functions.invoke(
+            "get-groups-by-distance",
+            {
+              body: {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              },
+            }
+          );
 
-      let url = "";
-      let options: RequestInit = {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // ✅ FIXED: Include both apikey AND Authorization header
-          "apikey": supabaseAnonKey,
-          "Authorization": `Bearer ${supabaseAnonKey}`,
-        },
-      };
-
-      if (position) {
-        url = `${functionsUrl}/get-groups-by-distance`;
-        options.body = JSON.stringify({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setUserLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      } else {
-        url = `${functionsUrl}/get-groups-by-day`;
-        const sundayZeroToSaturdaySix = new Date().getUTCDay();
-        const isoOneToSeven = ((sundayZeroToSaturdaySix + 6) % 7) + 1;
-        options.body = JSON.stringify({ day_of_week: isoOneToSeven });
-      }
-
-      fetch(url, options)
-        .then((res) => {
-          if (!res.ok) {
-            return res.json().then((err) => {
-              throw new Error(err.message || `HTTP ${res.status}: ${res.statusText}`);
-            });
+          if (error) {
+            console.error("Error from get-groups-by-distance:", error);
+            throw error;
           }
-          return res.json();
-        })
-        .then((data) => {
-          if (data.error) {
-            throw new Error(data.error);
-          }
+
+          console.log("Received groups by distance:", data);
+
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+
           setGroups(data.groups || []);
-          setStatus("success");
-        })
-        .catch((err) => {
-          console.error("Failed to fetch groups:", err);
-          setErrorMessage(`Failed to fetch groups: ${err.message}`);
-          setStatus("error");
-        });
+        } else {
+          // No geolocation - fetch groups sorted by day
+          const sundayZeroToSaturdaySix = new Date().getUTCDay();
+          const isoOneToSeven = ((sundayZeroToSaturdaySix + 6) % 7) + 1;
+
+          console.log("Fetching groups by day:", isoOneToSeven);
+
+          const { data, error } = await supabase.functions.invoke(
+            "get-groups-by-day",
+            {
+              body: { day_of_week: isoOneToSeven },
+            }
+          );
+
+          if (error) {
+            console.error("Error from get-groups-by-day:", error);
+            throw error;
+          }
+
+          console.log("Received groups by day:", data);
+          setGroups(data.groups || []);
+        }
+
+        setStatus("success");
+      } catch (err: any) {
+        console.error("Failed to fetch groups:", err);
+        setErrorMessage(
+          `Failed to fetch groups: ${err.message || "Unknown error"}`
+        );
+        setStatus("error");
+      }
     };
 
+    // Try to get user's geolocation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position: GeolocationPosition) => {
+          console.log("Geolocation success");
           fetchGroups(position);
         },
         (err: GeolocationError) => {
+          console.warn("Geolocation failed:", err.message);
           setErrorMessage(
             `Geolocation failed (${err.message}). Sorting by day.`
           );
@@ -134,10 +133,11 @@ export default function Home() {
         }
       );
     } else {
+      console.warn("Geolocation not supported");
       setErrorMessage("Geolocation not supported. Sorting by day.");
       fetchGroups(null);
     }
-  }, [functionsUrl, supabaseAnonKey]);
+  }, [supabase]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +146,9 @@ export default function Home() {
     setStatus("submitting");
 
     if (!selectedGroup || (!email && !isNoEmail)) {
-      setErrorMessage("Please select a group and enter your email (or check the box).");
+      setErrorMessage(
+        "Please select a group and enter your email (or check the box)."
+      );
       setStatus("idle");
       return;
     }
@@ -158,6 +160,7 @@ export default function Home() {
       return;
     }
 
+    // Validate location for in-person groups
     if (group.format === "In-person") {
       if (!userLocation || group.distance_meters === null) {
         setErrorMessage(
@@ -177,45 +180,48 @@ export default function Home() {
         return;
       }
     }
-    
+
     try {
-      const response = await fetch('/api/check-in', {
-        method: 'POST',
+      const response = await fetch("/api/check-in", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           email: isNoEmail ? null : email,
           groupId: selectedGroup,
-          isNoEmail: isNoEmail, 
-          geolocation: userLocation, 
+          isNoEmail: isNoEmail,
+          geolocation: userLocation,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setErrorMessage(data.error || 'An error occurred during sign-in.');
-        setStatus('idle');
+        setErrorMessage(data.error || "An error occurred during sign-in.");
+        setStatus("idle");
         return;
       }
 
+      // Handle different response statuses
       switch (data.status) {
-        case 'CHECKIN_COMPLETE':
-          router.push('/complete');
+        case "CHECKIN_COMPLETE":
+          router.push("/complete");
           break;
-        case 'ORIENTATION_REQUIRED':
-          router.push('/orientation');
+        case "ORIENTATION_REQUIRED":
+          router.push("/orientation");
           break;
-        case 'NO_EMAIL_INFO_REQUIRED':
-          router.push('/orientation'); 
+        case "NO_EMAIL_INFO_REQUIRED":
+          router.push("/orientation");
           break;
+        default:
+          setErrorMessage("Unexpected response from server.");
+          setStatus("idle");
       }
-
     } catch (error) {
-      console.error('Sign-in fetch error:', error);
-      setErrorMessage('Could not connect to the server. Please try again.');
-      setStatus('idle');
+      console.error("Sign-in fetch error:", error);
+      setErrorMessage("Could not connect to the server. Please try again.");
+      setStatus("idle");
     }
   };
 
@@ -224,10 +230,15 @@ export default function Home() {
       "0": "Sunday",
       "1": "Monday",
       "2": "Tuesday",
+      "3": "Wednesday",
       "3.0": "Wednesday",
+      "4": "Thursday",
       "4.0": "Thursday",
+      "5": "Friday",
       "5.0": "Friday",
+      "6": "Saturday",
       "6.0": "Saturday",
+      "7": "Sunday",
     };
     return days[day] || "Unknown Day";
   };
@@ -253,7 +264,7 @@ export default function Home() {
             {errorMessage}
           </div>
         )}
-        
+
         {status !== "loading" && (
           <form onSubmit={handleSignIn} className="space-y-6">
             <div>
@@ -280,7 +291,9 @@ export default function Home() {
                     {group.name} (
                     {group.format === "Online"
                       ? "Online"
-                      : `${Math.round(group.distance_meters || 0)}m away`}
+                      : group.distance_meters !== null
+                      ? `${Math.round(group.distance_meters)}m away`
+                      : "In-person"}
                     , {getDayOfWeek(group.meeting_day)} @ {group.meeting_time})
                   </option>
                 ))}
@@ -315,7 +328,10 @@ export default function Home() {
                 onChange={(e) => setIsNoEmail(e.target.checked)}
                 className="h-4 w-4 text-blue-600 border-gray-300 rounded"
               />
-              <label htmlFor="isNoEmail" className="ml-2 block text-sm text-gray-900">
+              <label
+                htmlFor="isNoEmail"
+                className="ml-2 block text-sm text-gray-900"
+              >
                 I don't have an email address
               </label>
             </div>
