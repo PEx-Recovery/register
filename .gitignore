@@ -12,3 +12,4 @@ generating-auth-token.md
 next-env.d.ts
 src/lib/whatever
 .vercel
+.env.local
