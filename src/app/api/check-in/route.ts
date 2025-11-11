@@ -1,11 +1,12 @@
-// src/app/api/check-in/route.ts
-// This is the full, updated code for this file.
-// src/app/api/check-in/route.ts
-
-export const runtime = 'nodejs';
+// FILE 1: src/app/api/check-in/route.ts
+// ============================================
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { v4 as uuidv4 } from 'uuid' 
+import { v4 as uuidv4 } from 'uuid'
+
+// 🔥 CRITICAL: Add these two lines at the top
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 // --- Helper Functions ---
 async function validateGeolocation(userLocation: any, groupLat: number, groupLon: number): Promise<boolean> {
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
     // --- 3. Handle the "No Email" Path ---
     if (isNoEmail) {
       const response = NextResponse.json({ status: 'NO_EMAIL_INFO_REQUIRED' })
-      response.cookies.set('app_status', 'NO_EMAIL_INFO_REQUIRED', { path: '/' }); // This is client-readable
+      response.cookies.set('app_status', 'NO_EMAIL_INFO_REQUIRED', { path: '/' });
       response.cookies.set('pending_group_id', groupId, { path: '/', httpOnly: true });
       return response
     }
@@ -94,12 +95,7 @@ export async function POST(request: Request) {
       }
       
       const response = NextResponse.json({ status: 'ORIENTATION_REQUIRED', isNewMember: true })
-      
-      // --- THIS IS THE FIX ---
-      // Removed httpOnly so the client-side useEffect can read it
       response.cookies.set('app_status', 'ORIENTATION_REQUIRED', { path: '/' }); 
-      
-      // These remain httpOnly for security
       response.cookies.set('member_id', newMember.id, { path: '/', httpOnly: true });
       response.cookies.set('pending_group_id', groupId, { path: '/', httpOnly: true });
       return response
@@ -111,12 +107,7 @@ export async function POST(request: Request) {
     }
     if (!member.orientation_complete) {
       const response = NextResponse.json({ status: 'ORIENTATION_REQUIRED', isNewMember: false })
-      
-      // --- THIS IS THE FIX ---
-      // Removed httpOnly so the client-side useEffect can read it
       response.cookies.set('app_status', 'ORIENTATION_REQUIRED', { path: '/' });
-      
-      // These remain httpOnly for security
       response.cookies.set('member_id', member.id, { path: '/', httpOnly: true });
       response.cookies.set('pending_group_id', groupId, { path: '/', httpOnly: true });
       return response

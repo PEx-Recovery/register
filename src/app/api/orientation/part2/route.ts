@@ -1,49 +1,38 @@
-// src/app/api/orientation/part2/route.ts
-// This is a NEW FILE
-export const runtime = 'nodejs';
+// FILE 4: src/app/api/orientation/part2/route.ts
+// ============================================
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
+
+// 🔥 CRITICAL: Add these two lines at the top
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
-    // This body will contain all form data (Steps 0-3)
     const body = await request.json();
 
-    // 1. Get Member ID from the secure cookie
     const memberIdCookie = request.cookies.get('member_id');
     if (!memberIdCookie) {
       return NextResponse.json({ error: 'User session not found. Please sign in again.' }, { status: 401 });
     }
     const memberId = memberIdCookie.value;
 
-    // 2. Destructure all data *except* Step 0 (which was saved in Part 1)
     const {
-      // Step 0 is ignored
       firstName, lastName, phone, dateOfBirth, gender, ethnicity,
-      
-      // Step 1: Emergency Contact
       emergencyContactName, emergencyContactPhone, emergencyContactEmail,
-      
-      // Step 2: Research Questions
       reasonForAttending, sourceOfDiscovery, problematicSubstances,
       currentlyInTreatment, currentTreatmentProgramme, previousTreatment,
       previousTreatmentProgrammes, previousRecoveryGroups, previousRecoveryGroupsNames,
       goalsForAttending, anythingElseImportant, howElseHelp,
-      
-      // Step 3: Consents
       consentWhatsapp, consentConfidentiality, consentAnonymity,
       consentLiability, consentVoluntary
     } = body;
 
-    // 3. Update the 'orientation_details' table with the remaining data
     const { error: detailsError } = await supabase
       .from('orientation_details')
       .update({
-        // reasonForAttending was saved in Part 1, but we can update it
         reason_for_attending: reasonForAttending,
-        
-        // Add all the new fields
         emergency_contact_name: emergencyContactName,
         emergency_contact_phone: emergencyContactPhone,
         emergency_contact_email: emergencyContactEmail,
@@ -63,16 +52,15 @@ export async function POST(request: NextRequest) {
         consent_anonymity: consentAnonymity,
         consent_liability: consentLiability,
         consent_voluntary: consentVoluntary,
-        created_at: new Date().toISOString(), // Mark as completed
+        created_at: new Date().toISOString(),
       })
-      .eq('member_id', memberId); // Find the row created in Part 1
+      .eq('member_id', memberId);
 
     if (detailsError) {
       console.error('Error updating orientation details (Part 2):', detailsError);
       return NextResponse.json({ error: 'Failed to save orientation details' }, { status: 500 });
     }
 
-    // 4. Update the 'members' table to mark orientation as complete
     const { error: memberError } = await supabase
       .from('members')
       .update({
@@ -86,7 +74,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to mark orientation as complete' }, { status: 500 });
     }
 
-    // --- Success: Clear all cookies ---
     const response = NextResponse.json({ status: 'SUCCESS' });
     response.cookies.set('app_status', 'CHECKIN_COMPLETE', { path: '/', httpOnly: true });
     response.cookies.set('member_id', '', { path: '/', maxAge: -1 });

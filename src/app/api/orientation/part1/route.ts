@@ -1,20 +1,17 @@
-// src/app/api/orientation/part1/route.ts
-// This is a NEW FILE
-// src/app/api/orientation/part1/route.ts
-
-export const runtime = 'nodejs';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 
+// 🔥 CRITICAL: Add these two lines at the top
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
-    // Body will contain all data from Step 0 + the isNoEmail flag
     const body = await request.json();
     const { isNoEmail, ...formData } = body;
 
-    // 1. Get Group ID from the secure cookie
     const groupIdCookie = request.cookies.get('pending_group_id');
     if (!groupIdCookie) {
       return NextResponse.json({ error: 'Session expired. Please start over.' }, { status: 401 });
@@ -23,16 +20,12 @@ export async function POST(request: NextRequest) {
     const today = new Date().toISOString().split('T')[0];
 
     if (isNoEmail) {
-      // --- "NO-EMAIL" LOGIC ---
-      // This user has no member_id. Save their info directly to the register.
       const { error } = await supabase.from('attendance_register').insert({
         id: uuidv4(),
         group_id: groupId,
         attendance_date: today,
         is_no_email_check_in: true,
         member_id: null,
-        
-        // Save generic data from the form
         first_name: formData.firstName,
         last_name: formData.lastName,
         phone: formData.phone,
@@ -46,18 +39,13 @@ export async function POST(request: NextRequest) {
         console.error('Error creating no-email attendance:', error);
         return NextResponse.json({ error: 'Failed to save attendance' }, { status: 500 });
       }
-
     } else {
-      // --- "EMAIL" LOGIC (Part 1) ---
-      // This user has a member_id. Update their member record
-      // and create a LINKED attendance record.
       const memberIdCookie = request.cookies.get('member_id');
       if (!memberIdCookie) {
         return NextResponse.json({ error: 'Member session not found. Please sign in again.' }, { status: 401 });
       }
       const memberId = memberIdCookie.value;
 
-      // 1. Update the member's basic info
       const { error: memberError } = await supabase
         .from('members')
         .update({
@@ -76,7 +64,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to update member details.' }, { status: 500 });
       }
 
-      // 2. Create the initial orientation_details row (will be updated in Part 2)
       const { error: detailsError } = await supabase
         .from('orientation_details')
         .insert({
@@ -92,12 +79,11 @@ export async function POST(request: NextRequest) {
          return NextResponse.json({ error: 'Failed to save orientation details.' }, { status: 500 });
       }
       
-      // 3. Create the attendance record (as requested)
       const { error: attendanceError } = await supabase
         .from('attendance_register')
         .insert({
           id: uuidv4(),
-          member_id: memberId, // <-- Linked to the member
+          member_id: memberId,
           group_id: groupId,
           attendance_date: today,
           first_name: formData.firstName,
@@ -116,10 +102,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // --- Success ---
-    // For "No-Email" users, this is the end. Clear all cookies.
-    // For "Email" users, we only clear app_status, but keep member_id and group_id
-    // for Part 2.
     const response = NextResponse.json({ status: 'SUCCESS' });
     if (isNoEmail) {
       response.cookies.set('app_status', '', { path: '/', maxAge: -1 });
