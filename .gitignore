@@ -13,3 +13,9 @@ next-env.d.ts
 src/lib/whatever
 .vercel
 .env.local
+src/lib/supabase/.env
+curls
+.vscode
+.npm-cache
+.next
+.cursor

@@ -1,8 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Group {
   id: string;
@@ -27,17 +40,38 @@ interface GeolocationError {
   message: string;
 }
 
+const signInSchema = z
+  .object({
+    groupId: z.string().min(1, "Please select a group."),
+    email: z
+      .string()
+      .trim()
+      .email("Enter a valid email address.")
+      .or(z.literal("")),
+    isNoEmail: z.boolean().default(false),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.isNoEmail) {
+      if (!data.email || data.email.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["email"],
+          message: "Email is required unless you confirm you have none.",
+        });
+      }
+    }
+  });
+
+type SignInFormValues = z.infer<typeof signInSchema>;
+
 export default function Home() {
   const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>("");
-  const [email, setEmail] = useState<string>("");
-  const [isNoEmail, setIsNoEmail] = useState(false);
-  const [status, setStatus] = useState<
-    "loading" | "error" | "success" | "idle" | "submitting"
-  >("loading");
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const [successMessage, setSuccessMessage] = useState<string>("");
+  const [fetchStatus, setFetchStatus] = useState<"loading" | "error" | "success">(
+    "loading"
+  );
+  const [fetchMessage, setFetchMessage] = useState<string>("");
+  const [formError, setFormError] = useState<string>("");
   const [userLocation, setUserLocation] = useState<{
     latitude: number;
     longitude: number;
@@ -45,6 +79,18 @@ export default function Home() {
 
   // Create Supabase client
   const supabase = createClient();
+  const form = useForm<SignInFormValues>({
+    resolver: zodResolver(signInSchema),
+    defaultValues: {
+      groupId: "",
+      email: "",
+      isNoEmail: false,
+    },
+  });
+  const isNoEmail = form.watch("isNoEmail");
+  const {
+    formState: { errors, isSubmitting },
+  } = form;
 
   useEffect(() => {
     const fetchGroups = async (position: GeolocationPosition | null) => {
@@ -102,13 +148,11 @@ export default function Home() {
           setGroups(data.groups || []);
         }
 
-        setStatus("success");
+        setFetchStatus("success");
       } catch (err: any) {
         console.error("Failed to fetch groups:", err);
-        setErrorMessage(
-          `Failed to fetch groups: ${err.message || "Unknown error"}`
-        );
-        setStatus("error");
+        setFetchMessage(`Failed to fetch groups: ${err.message || "Unknown error"}`);
+        setFetchStatus("error");
       }
     };
 
@@ -117,13 +161,12 @@ export default function Home() {
       navigator.geolocation.getCurrentPosition(
         (position: GeolocationPosition) => {
           console.log("Geolocation success");
+          setFetchMessage("");
           fetchGroups(position);
         },
         (err: GeolocationError) => {
           console.warn("Geolocation failed:", err.message);
-          setErrorMessage(
-            `Geolocation failed (${err.message}). Sorting by day.`
-          );
+          setFetchMessage(`Geolocation failed (${err.message}). Sorting by day.`);
           fetchGroups(null);
         },
         {
@@ -134,49 +177,38 @@ export default function Home() {
       );
     } else {
       console.warn("Geolocation not supported");
-      setErrorMessage("Geolocation not supported. Sorting by day.");
+      setFetchMessage("Geolocation not supported. Sorting by day.");
       fetchGroups(null);
     }
   }, [supabase]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSuccessMessage("");
-    setErrorMessage("");
-    setStatus("submitting");
+  const onSubmit = async (values: SignInFormValues) => {
+    setFormError("");
+    const normalizedEmail = values.email?.trim() ?? "";
+    const group = groups.find((g) => g.id === values.groupId);
 
-    if (!selectedGroup || (!email && !isNoEmail)) {
-      setErrorMessage(
-        "Please select a group and enter your email (or check the box)."
-      );
-      setStatus("idle");
-      return;
-    }
-
-    const group = groups.find((g) => g.id === selectedGroup);
     if (!group) {
-      setErrorMessage("Selected group not found.");
-      setStatus("idle");
+      const message = "Selected group not found.";
+      setFormError(message);
+      form.setError("groupId", { type: "manual", message });
       return;
     }
 
-    // Validate location for in-person groups
     if (group.format === "In-person") {
       if (!userLocation || group.distance_meters === null) {
-        setErrorMessage(
-          "Could not verify your location for this in-person group."
-        );
-        setStatus("idle");
+        const message =
+          "Could not verify your location for this in-person group.";
+        setFormError(message);
+        form.setError("groupId", { type: "manual", message });
         return;
       }
 
       if (group.distance_meters > 200) {
-        setErrorMessage(
-          `You are too far away (${Math.round(
-            group.distance_meters
-          )}m) to sign in. You must be within 200m.`
-        );
-        setStatus("idle");
+        const message = `You are too far away (${Math.round(
+          group.distance_meters
+        )}m) to sign in. You must be within 200m.`;
+        setFormError(message);
+        form.setError("groupId", { type: "manual", message });
         return;
       }
     }
@@ -188,9 +220,9 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: isNoEmail ? null : email,
-          groupId: selectedGroup,
-          isNoEmail: isNoEmail,
+          email: values.isNoEmail ? null : normalizedEmail,
+          groupId: values.groupId,
+          isNoEmail: values.isNoEmail,
           geolocation: userLocation,
         }),
       });
@@ -198,30 +230,25 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        setErrorMessage(data.error || "An error occurred during sign-in.");
-        setStatus("idle");
+        const message = data.error || "An error occurred during sign-in.";
+        setFormError(message);
         return;
       }
 
-      // Handle different response statuses
       switch (data.status) {
         case "CHECKIN_COMPLETE":
           router.push("/complete");
           break;
         case "ORIENTATION_REQUIRED":
-          router.push("/orientation");
-          break;
         case "NO_EMAIL_INFO_REQUIRED":
           router.push("/orientation");
           break;
         default:
-          setErrorMessage("Unexpected response from server.");
-          setStatus("idle");
+          setFormError("Unexpected response from server.");
       }
     } catch (error) {
       console.error("Sign-in fetch error:", error);
-      setErrorMessage("Could not connect to the server. Please try again.");
-      setStatus("idle");
+      setFormError("Could not connect to the server. Please try again.");
     }
   };
 
@@ -245,113 +272,110 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-start p-6 pt-24 bg-gray-50 text-gray-900">
-      <div className="w-full max-w-md bg-white p-8 rounded-lg shadow-lg">
-        <h1 className="text-3xl font-bold mb-4 text-center text-gray-800">
-          Welcome to the Register
-        </h1>
-        <p className="text-gray-600 mb-6 text-center">
-          Please select your group and enter your email to sign in.
-        </p>
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-2 text-center">
+          <CardTitle className="text-3xl font-bold">
+            Welcome to the Register
+          </CardTitle>
+          <CardDescription>
+            Please select your group and enter your email to sign in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {fetchStatus === "loading" && (
+            <p className="text-center text-blue-600">
+              Fetching groups... Please wait.
+            </p>
+          )}
 
-        {status === "loading" && (
-          <p className="text-blue-600 text-center">
-            Fetching groups... Please wait.
-          </p>
-        )}
-
-        {errorMessage && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative mb-4">
-            {errorMessage}
-          </div>
-        )}
-
-        {status !== "loading" && (
-          <form onSubmit={handleSignIn} className="space-y-6">
-            <div>
-              <label
-                htmlFor="group"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Select Group
-              </label>
-              <select
-                id="group"
-                value={selectedGroup}
-                onChange={(e) => setSelectedGroup(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="" disabled>
-                  {groups.length > 0
-                    ? "Please select a group..."
-                    : "No groups found"}
-                </option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name} (
-                    {group.format === "Online"
-                      ? "Online"
-                      : group.distance_meters !== null
-                      ? `${Math.round(group.distance_meters)}m away`
-                      : "In-person"}
-                    , {getDayOfWeek(group.meeting_day)} @ {group.meeting_time})
-                  </option>
-                ))}
-              </select>
+          {fetchMessage && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {fetchMessage}
             </div>
+          )}
 
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Email Address
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required={!isNoEmail}
-                disabled={isNoEmail}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                placeholder="you@example.com"
-              />
+          {formError && (
+            <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
+              {formError}
             </div>
+          )}
 
-            <div className="flex items-center">
-              <input
-                id="isNoEmail"
-                name="isNoEmail"
-                type="checkbox"
-                checked={isNoEmail}
-                onChange={(e) => setIsNoEmail(e.target.checked)}
-                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-              />
-              <label
-                htmlFor="isNoEmail"
-                className="ml-2 block text-sm text-gray-900"
-              >
-                I don't have an email address
-              </label>
-            </div>
-
-            {successMessage && (
-              <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-md relative mb-4">
-                {successMessage}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={status === "submitting"}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+          {fetchStatus !== "loading" && (
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-6"
+              noValidate
             >
-              {status === "submitting" ? "Signing In..." : "Sign In"}
-            </button>
-          </form>
-        )}
-      </div>
+              <div className="space-y-2">
+                <Label htmlFor="group">Select Group</Label>
+                <select
+                  id="group"
+                  {...form.register("groupId")}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={groups.length === 0}
+                >
+                  <option value="">
+                    {groups.length > 0
+                      ? "Please select a group..."
+                      : "No groups found"}
+                  </option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name} (
+                      {group.format === "Online"
+                        ? "Online"
+                        : group.distance_meters !== null
+                        ? `${Math.round(group.distance_meters)}m away`
+                        : "In-person"}
+                      , {getDayOfWeek(group.meeting_day)} @ {group.meeting_time})
+                    </option>
+                  ))}
+                </select>
+                {errors.groupId && (
+                  <p className="text-sm text-red-600">{errors.groupId.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  disabled={isNoEmail}
+                  {...form.register("email")}
+                />
+                {errors.email && (
+                  <p className="text-sm text-red-600">{errors.email.message}</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  id="isNoEmail"
+                  type="checkbox"
+                  className="h-4 w-4 rounded border border-input"
+                  {...form.register("isNoEmail")}
+                />
+                <Label
+                  htmlFor="isNoEmail"
+                  className="text-sm font-normal text-foreground"
+                >
+                  I don't have an email address
+                </Label>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isSubmitting || groups.length === 0}
+              >
+                {isSubmitting ? "Signing In..." : "Sign In"}
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }
