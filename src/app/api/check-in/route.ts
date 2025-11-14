@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     const { data: member, error: memberError } = await supabase
       .from('members')
       .select(
-        'id, orientation_complete, first_name, last_name, phone, dob, gender, ethnicity, reason_for_attending'
+        'id, orientation_complete, first_name, last_name, phone, date_of_birth, gender, ethnicity, reason_for_attending'
       )
       .eq('email', email)
       .single()
@@ -190,10 +190,10 @@ export async function POST(request: Request) {
         first_name: member.first_name,
         last_name: member.last_name,
         phone: member.phone,
-        date_of_birth: member.dob,
+        date_of_birth: member.date_of_birth,
         gender: member.gender,
         ethnicity: member.ethnicity,
-        reason_for_attending: member.reason_for_attending,
+        reason_for_attending: member.reason_for_attending ?? null,
       })
 
     if (attendanceError) {

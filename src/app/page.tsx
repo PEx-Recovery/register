@@ -367,7 +367,7 @@ export default function Home() {
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full border border-input bg-black text-white hover:bg-black/90"
                 disabled={isSubmitting || groups.length === 0}
               >
                 {isSubmitting ? "Signing In..." : "Sign In"}

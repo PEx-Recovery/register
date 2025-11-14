@@ -527,7 +527,7 @@ export default function OrientationPage() {
         {!isNoEmailMode && (
           <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
             <div 
-              className="bg-blue-600 h-2.5 rounded-full" 
+              className="bg-[#3c818f] h-2.5 rounded-full" 
               style={{ width: `${((step + 1) / 4) * 100}%` }}
             ></div>
           </div>
@@ -575,7 +575,7 @@ export default function OrientationPage() {
                     type="button" // This is NOT a submit button
                     onClick={handlePart1Submit} // Calls Part 1 API
                     disabled={isSubmitting}
-                    className="bg-blue-600 text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-blue-700"
+                    className="bg-black text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-gray-700"
                   >
                     {isSubmitting ? "Saving..." : "Next"}
                   </button>
@@ -586,7 +586,7 @@ export default function OrientationPage() {
                     type="button" // This is just a simple "Next"
                     onClick={() => setStep(s => s + 1)}
                     disabled={isSubmitting}
-                    className="bg-blue-600 text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-blue-700"
+                    className="bg-black text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-gray-700"
                   >
                     Next
                   </button>
@@ -596,7 +596,7 @@ export default function OrientationPage() {
                   <button
                     type="submit" // This IS a submit button
                     disabled={isSubmitting}
-                    className="bg-green-600 text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-green-700 disabled:opacity-50"
+                    className="bg-black text-white py-2 px-4 rounded-md font-medium shadow-sm hover:bg-gray-700 disabled:opacity-50"
                   >
                     {isSubmitting ? "Submitting..." : "Complete Registration"}
                   </button>

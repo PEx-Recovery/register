@@ -1,8 +1,8 @@
-import './globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import "./globals.css";
+import type { Metadata } from "next";
+import { Montserrat } from "next/font/google";
 
-const inter = Inter({ subsets: ['latin'] })
+const montserrat = Montserrat({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: 'Project Exodus Register',
@@ -12,11 +12,11 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={montserrat.className}>
         <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
           {children}
         </main>
