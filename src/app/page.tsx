@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Group {
   id: string;
@@ -308,29 +315,32 @@ export default function Home() {
             >
               <div className="space-y-2">
                 <Label htmlFor="group">Select Group</Label>
-                <select
-                  id="group"
-                  {...form.register("groupId")}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                <Select
+                  value={form.watch("groupId")}
+                  onValueChange={(value) => form.setValue("groupId", value)}
                   disabled={groups.length === 0}
                 >
-                  <option value="">
-                    {groups.length > 0
-                      ? "Please select a group..."
-                      : "No groups found"}
-                  </option>
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name} (
-                      {group.format === "Online"
-                        ? "Online"
-                        : group.distance_meters !== null
-                        ? `${Math.round(group.distance_meters)}m away`
-                        : "In-person"}
-                      , {getDayOfWeek(group.meeting_day)} @ {group.meeting_time})
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={
+                      groups.length > 0
+                        ? "Please select a group..."
+                        : "No groups found"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name} (
+                        {group.format === "Online"
+                          ? "Online"
+                          : group.distance_meters !== null
+                            ? `${Math.round(group.distance_meters)}m away`
+                            : "In-person"}
+                        , {getDayOfWeek(group.meeting_day)} @ {group.meeting_time})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.groupId && (
                   <p className="text-sm text-red-600">{errors.groupId.message}</p>
                 )}

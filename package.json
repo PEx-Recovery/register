@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "import-groups": "tsx scripts/import-groups.ts",
+    "clear-groups": "tsx scripts/clear-groups.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -20,7 +22,9 @@
     "@tailwindcss/cli": "^4.1.17",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csv-parser": "^3.0.0",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.4.5",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.553.0",
     "navigation": "^6.3.0",

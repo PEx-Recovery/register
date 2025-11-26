@@ -145,6 +145,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -153,5 +154,17 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+  }
+}
+
+/* Ensure popover elements always appear on top */
+@layer components {
+  [data-radix-popper-content-wrapper] {
+    z-index: 99999 !important;
+  }
+  
+  [data-slot="popover-content"] {
+    position: fixed !important;
+    z-index: 99999 !important;
   }
 }
