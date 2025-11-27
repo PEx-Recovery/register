@@ -17,9 +17,17 @@ import {
 import { StepContainer } from "@/components/ui/step-container";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Toaster } from "@/components/ui/toaster";
-import { filterGroups, Group } from "@/lib/group-utils";
 
-
+interface Group {
+    id: string;
+    name: string;
+    format: string;
+    meeting_day: string;
+    meeting_time: string;
+    latitude: number | null;
+    longitude: number | null;
+    distance_meters: number | null;
+}
 
 // Email validation schema
 const emailSchema = z
@@ -283,7 +291,7 @@ export default function CheckInV2Page() {
                     break;
                 case "ORIENTATION_REQUIRED":
                 case "NO_EMAIL_INFO_REQUIRED":
-                    router.push("/orientation");
+                    router.push("/orientation-v2");
                     break;
                 default:
                     toast.error("Unexpected response from server");
@@ -361,7 +369,7 @@ export default function CheckInV2Page() {
                                                 handleNext();
                                             }, 200);
                                         }}
-                                        options={filterGroups(groups, locationEnabled).map((g) => ({
+                                        options={groups.map((g) => ({
                                             value: g.id,
                                             label: `${g.name} (${g.format}, ${getDayOfWeek(g.meeting_day)} @ ${g.meeting_time})`,
                                             distance: locationEnabled ? g.distance_meters : null,

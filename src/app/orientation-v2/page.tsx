@@ -465,10 +465,7 @@ export default function OrientationV2Page() {
     };
 
     const handleBack = () => {
-        if (currentStep === 0) {
-            // On first step, go back to check-in page
-            router.push("/");
-        } else {
+        if (currentStep > 0) {
             setCurrentStep((prev) => prev - 1);
         }
     };
@@ -1040,7 +1037,7 @@ export default function OrientationV2Page() {
                     <Button
                         type="button"
                         onClick={handleBack}
-                        disabled={false}
+                        disabled={currentStep === 0}
                         variant="outline"
                         className="min-w-[100px]"
                     >
@@ -1050,7 +1047,7 @@ export default function OrientationV2Page() {
                         type="button"
                         onClick={handleNext}
                         disabled={isSubmitting}
-                        className="min-w-[100px] bg-white hover:bg-gray-800"
+                        className="min-w-[100px] bg-black hover:bg-gray-800"
                     >
                         {currentStep === totalSteps - 1
                             ? isSubmitting

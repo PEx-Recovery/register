@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
 
   // --- ADDED: STATE MANAGEMENT "BOUNCER" LOGIC ---
   const { pathname } = request.nextUrl
-  
+
   // Get the state we stored in our API route cookie
   const status = request.cookies.get('app_status')?.value;
 
@@ -73,9 +73,9 @@ export async function middleware(request: NextRequest) {
   const completePage = '/complete';
   const homePage = '/'; // The page.tsx we've been editing
 
-  // RULE 1: If user needs orientation, only allow them on the orientation page.
-  if (status === 'ORIENTATION_REQUIRED' && pathname !== orientationPage) {
-    // If they try to go to '/' or '/complete', force them to /orientation
+  // RULE 1: If user needs orientation, only allow them on the orientation page OR the home page (to restart).
+  if (status === 'ORIENTATION_REQUIRED' && pathname !== orientationPage && pathname !== homePage) {
+    // If they try to go to '/complete' or other pages, force them to /orientation
     return NextResponse.redirect(new URL(orientationPage, request.url));
   }
 
@@ -88,7 +88,7 @@ export async function middleware(request: NextRequest) {
     // Let the user see the /complete page, but...
     // ...also send a command to clear the cookie.
     response.cookies.set('app_status', '', { path: '/', maxAge: -1 });
-    return response; 
+    return response;
   }
 
   // RULE 4: If user's state *is* 'CHECKIN_COMPLETE' but they are *not*

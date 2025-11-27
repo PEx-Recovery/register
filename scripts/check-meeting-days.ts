@@ -30,7 +30,7 @@ async function checkMeetingDays() {
         .select('meeting_day')
         .eq('is_archived', false);
 
-    const uniqueDays = [...new Set(allGroups?.map(g => g.meeting_day))];
+    const uniqueDays = Array.from(new Set(allGroups?.map(g => g.meeting_day) || []));
     console.log('\n📊 Unique meeting_day values found:');
     uniqueDays.forEach(day => {
         console.log(`   "${day}"`);
