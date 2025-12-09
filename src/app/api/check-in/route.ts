@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { v4 as uuidv4 } from 'uuid'
+import { syncAttendanceRegister } from '@/lib/glide-sync'
+
 
 // Force dynamic rendering
 export const runtime = 'nodejs'
@@ -114,12 +116,21 @@ export async function POST(request: Request) {
     if (memberError || !member) {
       console.log('Creating new member for:', email)
       const newMemberId = uuidv4()
+      const orientationId = uuidv4()
+      const attendanceId = uuidv4()
+      const today = new Date().toISOString().split('T')[0]
 
+      // 1. Create member record with email and location coordinates
       const { data: newMember, error: createError } = await supabase
         .from('members')
         .insert({
           id: newMemberId,
           email: email,
+          latitude: geolocation?.latitude || null,
+          longitude: geolocation?.longitude || null,
+          orientation_row_id: orientationId, // Link to orientation record
+          group_row_id: groupId, // Link to group
+          orientation_complete: false,
         })
         .select('id')
         .single()
@@ -132,6 +143,48 @@ export async function POST(request: Request) {
         )
       }
 
+      // 2. Create orientation_details record with email and location coordinates
+      const { error: orientationError } = await supabase
+        .from('orientation_details')
+        .insert({
+          id: orientationId,
+          member_id: newMemberId,
+          member_row_id: newMemberId, // Link back to member
+          group_row_id: groupId, // Link to group
+          email: email,
+          latitude: geolocation?.latitude || null,
+          longitude: geolocation?.longitude || null,
+        })
+
+      if (orientationError) {
+        console.error('Failed to create orientation record:', orientationError)
+        return NextResponse.json(
+          { error: 'Could not create orientation record' },
+          { status: 500 }
+        )
+      }
+
+      // 3. Create attendance_register record for today with row linking
+      const { error: attendanceError } = await supabase
+        .from('attendance_register')
+        .insert({
+          id: attendanceId,
+          member_id: newMemberId,
+          member_row_id: newMemberId, // Link to member
+          group_id: groupId,
+          group_row_id: groupId, // Link to group
+          attendance_date: today,
+          is_no_email_check_in: false,
+        })
+
+      if (attendanceError) {
+        console.error('Failed to create attendance record:', attendanceError)
+        return NextResponse.json(
+          { error: 'Could not create attendance record' },
+          { status: 500 }
+        )
+      }
+
       const response = NextResponse.json({
         status: 'ORIENTATION_REQUIRED',
         isNewMember: true,
@@ -139,11 +192,15 @@ export async function POST(request: Request) {
       response.cookies.set('app_status', 'ORIENTATION_REQUIRED', { path: '/' })
       response.cookies.set('member_id', newMember.id, {
         path: '/',
-        httpOnly: true,
+      })
+      response.cookies.set('orientation_id', orientationId, {
+        path: '/',
       })
       response.cookies.set('pending_group_id', groupId, {
         path: '/',
-        httpOnly: true,
+      })
+      response.cookies.set('user_email', email, {
+        path: '/',
       })
       return response
     }
@@ -159,6 +216,39 @@ export async function POST(request: Request) {
     // Check if orientation is complete
     if (!member.orientation_complete) {
       console.log('Member needs orientation:', member.id)
+
+      // Get the orientation_details record ID for this member
+      const { data: orientationData } = await supabase
+        .from('orientation_details')
+        .select('id')
+        .eq('member_id', member.id)
+        .single()
+
+      const orientationId = orientationData?.id
+
+      // Create attendance record for returning member who hasn't completed orientation
+      const today = new Date().toISOString().split('T')[0]
+      const { error: attendanceError } = await supabase
+        .from('attendance_register')
+        .insert({
+          id: uuidv4(),
+          member_id: member.id,
+          member_row_id: member.id,
+          group_id: groupId,
+          group_row_id: groupId,
+          attendance_date: today,
+          is_no_email_check_in: false,
+          // Copy existing member data to attendance register
+          first_name: member.first_name,
+          last_name: member.last_name,
+          phone: member.phone,
+          date_of_birth: member.date_of_birth,
+        })
+
+      if (attendanceError) {
+        console.error('Failed to create attendance record:', attendanceError)
+      }
+
       const response = NextResponse.json({
         status: 'ORIENTATION_REQUIRED',
         isNewMember: false,
@@ -166,11 +256,17 @@ export async function POST(request: Request) {
       response.cookies.set('app_status', 'ORIENTATION_REQUIRED', { path: '/' })
       response.cookies.set('member_id', member.id, {
         path: '/',
-        httpOnly: true,
       })
+      if (orientationId) {
+        response.cookies.set('orientation_id', orientationId, {
+          path: '/',
+        })
+      }
       response.cookies.set('pending_group_id', groupId, {
         path: '/',
-        httpOnly: true,
+      })
+      response.cookies.set('user_email', email, {
+        path: '/',
       })
       return response
     }
@@ -184,7 +280,9 @@ export async function POST(request: Request) {
       .insert({
         id: uuidv4(),
         member_id: member.id,
+        member_row_id: member.id,
         group_id: groupId,
+        group_row_id: groupId,
         attendance_date: today,
         is_no_email_check_in: false,
         first_name: member.first_name,
@@ -203,6 +301,22 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+
+    // Sync to Glide (async, non-blocking)
+    syncAttendanceRegister({
+      firstName: member.first_name || '',
+      lastName: member.last_name || '',
+      gender: member.gender,
+      dateOfBirth: member.date_of_birth,
+      ethnicity: member.ethnicity,
+      memberId: member.id,
+      groupId: groupId,
+      attendanceDate: today,
+      reasonForAttending: member.reason_for_attending,
+      email: email
+    }).catch(error => {
+      console.error('[Check-in] Glide sync failed (non-blocking):', error)
+    })
 
     const response = NextResponse.json({ status: 'CHECKIN_COMPLETE' })
     response.cookies.set('app_status', 'CHECKIN_COMPLETE', { path: '/' })

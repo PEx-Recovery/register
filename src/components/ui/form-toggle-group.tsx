@@ -1,5 +1,4 @@
 import * as React from "react"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
 
 interface Option {
@@ -26,21 +25,29 @@ export function FormToggleGroup({
     )
 
     return (
-        <ToggleGroup
-            type="single"
-            value={value}
-            onValueChange={onValueChange}
-            className={cn("flex flex-wrap justify-start gap-3", className)}
-        >
-            {normalizedOptions.map((option) => (
-                <ToggleGroupItem
-                    key={option.value}
-                    value={option.value}
-                    className="h-12 px-6 text-base border border-gray-200 rounded-full data-[state=on]:bg-black data-[state=on]:text-white hover:bg-gray-100 hover:text-gray-900 transition-all"
-                >
-                    {option.label}
-                </ToggleGroupItem>
-            ))}
-        </ToggleGroup>
+        <div className={cn("flex flex-wrap gap-3 w-full", className)} role="group">
+            {normalizedOptions.map((option) => {
+                const isSelected = value === option.value
+                return (
+                    <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => onValueChange(option.value)}
+                        className={cn(
+                            "min-h-12 h-auto px-6 py-3 text-base rounded-full font-medium",
+                            "border-2 transition-all duration-200",
+                            "whitespace-normal break-words",
+                            "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black",
+                            isSelected
+                                ? "bg-black text-white border-black"
+                                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400"
+                        )}
+                        aria-pressed={isSelected}
+                    >
+                        {option.label}
+                    </button>
+                )
+            })}
+        </div>
     )
 }

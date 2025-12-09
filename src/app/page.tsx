@@ -283,7 +283,7 @@ export default function CheckInV2Page() {
                     break;
                 case "ORIENTATION_REQUIRED":
                 case "NO_EMAIL_INFO_REQUIRED":
-                    router.push("/orientation");
+                    router.push("/orientation-v2");
                     break;
                 default:
                     toast.error("Unexpected response from server");

@@ -1,7 +1,6 @@
 "use client";
 
 import { ReactNode, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface StepContainerProps {
     children: ReactNode;
@@ -52,18 +51,12 @@ export function StepContainer({
     }, [onEnterPress]);
 
     return (
-        <AnimatePresence mode="wait">
-            <motion.div
-                key={stepKey}
-                ref={containerRef}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-                className="w-full"
-            >
-                {children}
-            </motion.div>
-        </AnimatePresence>
+        <div
+            key={stepKey}
+            ref={containerRef}
+            className="w-full"
+        >
+            {children}
+        </div>
     );
 }

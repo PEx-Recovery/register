@@ -1,19 +1,12 @@
 // src/app/orientation-v2/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import Confetti from "react-confetti";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { FormToggleGroup } from "@/components/ui/form-toggle-group";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,6 +19,7 @@ import {
 import { StepContainer } from "@/components/ui/step-container";
 import { Toaster } from "@/components/ui/toaster";
 import { generateAvatar } from "@/lib/avatar";
+import { createClient } from "@/lib/supabase/client";
 
 // Dropdown Options (same as before)
 const GENDERS = ["Male", "Female", "Non-binary", "Prefer not to say", "Other"];
@@ -141,45 +135,66 @@ interface FormData {
     consentVoluntary: boolean;
 }
 
+const INITIAL_FORM_DATA: FormData = {
+    firstName: "",
+    lastName: "",
+    phone: "",
+    dateOfBirth: "",
+    gender: "",
+    ethnicity: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    emergencyContactEmail: "",
+    reasonForAttending: "",
+    sourceOfDiscovery: "",
+    problematicSubstances: "",
+    problematicSubstancesOther: "",
+    currentlyInTreatment: "",
+    currentTreatmentProgramme: "",
+    previousTreatment: "",
+    previousTreatmentProgrammes: "",
+    previousRecoveryGroups: "",
+    previousRecoveryGroupsNames: "",
+    goalsForAttending: "",
+    goalsForAttendingOther: "",
+    anythingElseImportant: "",
+    howElseHelp: "",
+    consentWhatsapp: false,
+    consentConfidentiality: false,
+    consentAnonymity: false,
+    consentLiability: false,
+    consentVoluntary: false,
+};
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+
+    return debouncedValue;
+}
+
 export default function OrientationV2Page() {
     const router = useRouter();
+    const supabase = createClient();
     const [currentStep, setCurrentStep] = useState(0);
     const [isNoEmailMode, setIsNoEmailMode] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
     const [avatarUrl, setAvatarUrl] = useState("");
     const [userEmail, setUserEmail] = useState("");
+    const [isHydrated, setIsHydrated] = useState(false);
 
-    const [formData, setFormData] = useState<FormData>({
-        firstName: "",
-        lastName: "",
-        phone: "",
-        dateOfBirth: "",
-        gender: "",
-        ethnicity: "",
-        emergencyContactName: "",
-        emergencyContactPhone: "",
-        emergencyContactEmail: "",
-        reasonForAttending: "",
-        sourceOfDiscovery: "",
-        problematicSubstances: "",
-        problematicSubstancesOther: "",
-        currentlyInTreatment: "",
-        currentTreatmentProgramme: "",
-        previousTreatment: "",
-        previousTreatmentProgrammes: "",
-        previousRecoveryGroups: "",
-        previousRecoveryGroupsNames: "",
-        goalsForAttending: "",
-        goalsForAttendingOther: "",
-        anythingElseImportant: "",
-        howElseHelp: "",
-        consentWhatsapp: false,
-        consentConfidentiality: false,
-        consentAnonymity: false,
-        consentLiability: false,
-        consentVoluntary: false,
-    });
+    const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
 
     // Ref to access latest form data in closures (like setTimeout)
     const formDataRef = useRef(formData);
@@ -188,6 +203,7 @@ export default function OrientationV2Page() {
         formDataRef.current = formData;
     }, [formData]);
 
+    // Hydrate from localStorage and Cookies
     useEffect(() => {
         const status = Cookies.get("app_status");
         const email = Cookies.get("user_email");
@@ -200,90 +216,70 @@ export default function OrientationV2Page() {
             setUserEmail(email);
             setAvatarUrl(generateAvatar(email));
         }
+
+        // Load from localStorage
+        const savedData = localStorage.getItem("orientation_form_data");
+        const savedStep = localStorage.getItem("orientation_current_step");
+
+        if (savedData) {
+            try {
+                const parsedData = JSON.parse(savedData);
+                setFormData((prev) => ({ ...prev, ...parsedData }));
+            } catch (e) {
+                console.error("Failed to parse saved form data", e);
+            }
+        }
+
+        if (savedStep) {
+            setCurrentStep(parseInt(savedStep, 10));
+        }
+
+        setIsHydrated(true);
     }, []);
 
-    // Show confetti when user enters their first name
+    // Persist to localStorage
     useEffect(() => {
-        if (formData.firstName && !showConfetti && currentStep === 0) {
-            setShowConfetti(true);
-            setTimeout(() => setShowConfetti(false), 5000);
+        if (isHydrated) {
+            localStorage.setItem("orientation_form_data", JSON.stringify(formData));
+            localStorage.setItem("orientation_current_step", currentStep.toString());
         }
-    }, [formData.firstName, currentStep]);
+    }, [formData, currentStep, isHydrated]);
 
-    // All steps definition
-    const getAllSteps = () => {
-        const baseSteps = [
-            "firstName",
-            "lastName",
-            "phone",
-            "dateOfBirth",
-            "gender",
-            "ethnicity",
-            "reasonForAttending",
-            "emergencyContactName",
-            "emergencyContactPhone",
-            "emergencyContactEmail",
-            "sourceOfDiscovery",
-            "problematicSubstances",
-        ];
+    const steps = [
+        "firstName",
+        "lastName",
+        "phone",
+        "dateOfBirth",
+        "gender",
+        "ethnicity",
+        "reasonForAttending",
+        "emergencyContactName",
+        "emergencyContactPhone",
+        "emergencyContactEmail",
+        "sourceOfDiscovery",
+        "problematicSubstances",
+        "problematicSubstancesOther",
+        "currentlyInTreatment",
+        "currentTreatmentProgramme",
+        "previousTreatment",
+        "previousTreatmentProgrammes",
+        "previousRecoveryGroups",
+        "previousRecoveryGroupsNames",
+        "goalsForAttending",
+        "goalsForAttendingOther",
+        "anythingElseImportant",
+        "howElseHelp",
+        "consents",
+    ];
 
-        const conditionalSteps = [];
-
-        // Add conditional step: If problematicSubstances is "Other"
-        if (formData.problematicSubstances === "Other") {
-            conditionalSteps.push("problematicSubstancesOther");
-        }
-
-        conditionalSteps.push("currentlyInTreatment");
-
-        // Add conditional step: If currentlyInTreatment is "Yes"
-        if (formData.currentlyInTreatment === "Yes") {
-            conditionalSteps.push("currentTreatmentProgramme");
-        }
-
-        conditionalSteps.push("previousTreatment");
-
-        // Add conditional step: If previousTreatment is "Yes"
-        if (formData.previousTreatment === "Yes") {
-            conditionalSteps.push("previousTreatmentProgrammes");
-        }
-
-        conditionalSteps.push("previousRecoveryGroups");
-
-        // Add conditional step: If previousRecoveryGroups is "Yes"
-        if (formData.previousRecoveryGroups === "Yes") {
-            conditionalSteps.push("previousRecoveryGroupsNames");
-        }
-
-        conditionalSteps.push("goalsForAttending");
-
-        // Add conditional step: If goalsForAttending is "Other"
-        if (formData.goalsForAttending === "Other") {
-            conditionalSteps.push("goalsForAttendingOther");
-        }
-
-        conditionalSteps.push("anythingElseImportant");
-        conditionalSteps.push("howElseHelp");
-        conditionalSteps.push("consents");
-
-        return [...baseSteps, ...conditionalSteps];
-    };
-
-    const steps = getAllSteps();
     const totalSteps = steps.length;
-    const progressPercent = ((currentStep + 1) / totalSteps) * 100;
 
-    const handleChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-    ) => {
-        const { name, value, type } = e.target;
-
-        if (type === "checkbox") {
-            const { checked } = e.target as HTMLInputElement;
-            setFormData((prev) => ({ ...prev, [name]: checked }));
-        } else {
-            setFormData((prev) => ({ ...prev, [name]: value }));
-        }
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value, type, checked } = e.target;
+        setFormData((prev) => ({
+            ...prev,
+            [name]: type === "checkbox" ? checked : value,
+        }));
     };
 
     const handleSelectChange = (name: string) => (value: string) => {
@@ -373,7 +369,7 @@ export default function OrientationV2Page() {
                 }
                 break;
             case "problematicSubstancesOther":
-                if (!data.problematicSubstancesOther.trim()) {
+                if (data.problematicSubstances === "Other" && !data.problematicSubstancesOther.trim()) {
                     toast.error("Please specify the substance or behavior");
                     return false;
                 }
@@ -385,7 +381,7 @@ export default function OrientationV2Page() {
                 }
                 break;
             case "currentTreatmentProgramme":
-                if (!data.currentTreatmentProgramme.trim()) {
+                if (data.currentlyInTreatment === "Yes" && !data.currentTreatmentProgramme.trim()) {
                     toast.error("Please enter your current treatment programme");
                     return false;
                 }
@@ -397,7 +393,7 @@ export default function OrientationV2Page() {
                 }
                 break;
             case "previousTreatmentProgrammes":
-                if (!data.previousTreatmentProgrammes) {
+                if (data.previousTreatment === "Yes" && !data.previousTreatmentProgrammes) {
                     toast.error("Please select a treatment facility");
                     return false;
                 }
@@ -409,7 +405,7 @@ export default function OrientationV2Page() {
                 }
                 break;
             case "previousRecoveryGroupsNames":
-                if (!data.previousRecoveryGroupsNames) {
+                if (data.previousRecoveryGroups === "Yes" && !data.previousRecoveryGroupsNames) {
                     toast.error("Please select a recovery group");
                     return false;
                 }
@@ -421,7 +417,7 @@ export default function OrientationV2Page() {
                 }
                 break;
             case "goalsForAttendingOther":
-                if (!data.goalsForAttendingOther.trim()) {
+                if (data.goalsForAttending === "Other" && !data.goalsForAttendingOther.trim()) {
                     toast.error("Please specify your goals");
                     return false;
                 }
@@ -454,65 +450,150 @@ export default function OrientationV2Page() {
         return true;
     };
 
-    const handleNext = () => {
-        if (!validateCurrentStep()) return;
-
-        if (currentStep < totalSteps - 1) {
-            setCurrentStep((prev) => prev + 1);
-        } else {
-            handleSubmit();
+    const shouldShowStep = (stepName: string, data: FormData): boolean => {
+        switch (stepName) {
+            case "problematicSubstancesOther":
+                return data.problematicSubstances === "Other";
+            case "currentTreatmentProgramme":
+                return data.currentlyInTreatment === "Yes";
+            case "previousTreatmentProgrammes":
+                return data.previousTreatment === "Yes";
+            case "previousRecoveryGroupsNames":
+                return data.previousRecoveryGroups === "Yes";
+            case "goalsForAttendingOther":
+                return data.goalsForAttending === "Other";
+            default:
+                return true;
         }
     };
 
-    const handleBack = () => {
-        if (currentStep > 0) {
-            setCurrentStep((prev) => prev - 1);
-        }
-    };
+    const submitStepData = async (stepName: string, data: FormData) => {
+        const memberId = Cookies.get("member_id");
+        const groupId = Cookies.get("pending_group_id");
+        const orientationId = Cookies.get("orientation_id");
 
-    const handleSubmit = async () => {
-        setIsSubmitting(true);
+        if (!memberId || !groupId || !orientationId) {
+            console.error("Missing required IDs for submission");
+            toast.error("Missing user session information. Please restart the check-in process.");
+            return false;
+        }
 
         try {
-            const response = await fetch("/api/orientation/part2", {
+            const response = await fetch("/api/orientation/update-step", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    stepName,
+                    memberId,
+                    groupId,
+                    orientationId,
+                    data,
+                }),
             });
 
-            const data = await response.json();
             if (!response.ok) {
-                toast.error(data.error || "An error occurred during submission");
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Failed to save step data");
+            }
+
+            return true;
+        } catch (error) {
+            console.error("Error saving step data:", error);
+            toast.error("Failed to save progress. Please try again.");
+            return false;
+        }
+    };
+
+    const handleNext = async () => {
+        if (isSubmitting) return;
+
+        if (validateCurrentStep()) {
+            setIsSubmitting(true);
+            const data = formDataRef.current;
+            const currentStepName = steps[currentStep];
+
+            // Submit current step data
+            const success = await submitStepData(currentStepName, data);
+
+            if (!success) {
                 setIsSubmitting(false);
                 return;
             }
 
-            toast.success("Registration complete!");
-            router.push("/complete");
-        } catch (err) {
-            toast.error("Could not connect to the server. Please try again.");
+            // If this was the last step (consents), handle completion
+            if (currentStepName === "consents") {
+                await handleFinalCompletion();
+                return;
+            }
+
+            // Calculate next step
+            let nextStep = currentStep + 1;
+            while (nextStep < totalSteps && !shouldShowStep(steps[nextStep], data)) {
+                nextStep++;
+            }
+
+            if (nextStep < totalSteps) {
+                setCurrentStep(nextStep);
+            } else {
+                // Should not happen if logic is correct, but safe fallback
+                await handleFinalCompletion();
+            }
+
             setIsSubmitting(false);
         }
     };
 
+    const handlePrevious = () => {
+        const data = formDataRef.current;
+        let prevStep = currentStep - 1;
+        while (prevStep >= 0 && !shouldShowStep(steps[prevStep], data)) {
+            prevStep--;
+        }
+
+        if (prevStep >= 0) {
+            setCurrentStep(prevStep);
+        }
+    };
+
+    const handleFinalCompletion = async () => {
+        setShowConfetti(true);
+
+        // Clear local storage
+        localStorage.removeItem("orientation_form_data");
+        localStorage.removeItem("orientation_current_step");
+
+        // Set cookies for completion
+        Cookies.set("app_status", "CHECKIN_COMPLETE");
+        Cookies.remove("member_id");
+        Cookies.remove("pending_group_id");
+        Cookies.remove("orientation_id");
+
+        setTimeout(() => {
+            router.push("/complete");
+        }, 3000);
+    };
+
     const renderStep = () => {
         const stepName = steps[currentStep];
+        console.log("renderStep called - currentStep:", currentStep, "stepName:", stepName);
 
         switch (stepName) {
             case "firstName":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
                                 What's your first name? <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="firstName"
-                                type="text"
                                 value={formData.firstName}
                                 onChange={handleChange}
                                 placeholder="Enter your first name"
-                                autoComplete="given-name"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -520,18 +601,18 @@ export default function OrientationV2Page() {
 
             case "lastName":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                And your last name? <span className="text-red-600">*</span>
+                                What's your last name? <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="lastName"
-                                type="text"
                                 value={formData.lastName}
                                 onChange={handleChange}
                                 placeholder="Enter your last name"
-                                autoComplete="family-name"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -539,18 +620,18 @@ export default function OrientationV2Page() {
 
             case "phone":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
                                 What's your phone number? <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="phone"
-                                type="tel"
                                 value={formData.phone}
                                 onChange={handleChange}
                                 placeholder="Enter your phone number"
-                                autoComplete="tel"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -561,7 +642,7 @@ export default function OrientationV2Page() {
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                When were you born? <span className="text-red-600">*</span>
+                                What's your date of birth? <span className="text-red-600">*</span>
                             </label>
                             <DatePicker
                                 date={formData.dateOfBirth ? new Date(formData.dateOfBirth) : undefined}
@@ -616,7 +697,7 @@ export default function OrientationV2Page() {
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Why are you attending? <span className="text-red-600">*</span>
+                                Why are you attending today? <span className="text-red-600">*</span>
                             </label>
                             <FormToggleGroup
                                 value={formData.reasonForAttending}
@@ -629,17 +710,18 @@ export default function OrientationV2Page() {
 
             case "emergencyContactName":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Emergency contact: Full name <span className="text-red-600">*</span>
+                                Emergency Contact Name <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="emergencyContactName"
-                                type="text"
                                 value={formData.emergencyContactName}
                                 onChange={handleChange}
-                                placeholder="Enter emergency contact name"
+                                placeholder="Name"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -647,17 +729,18 @@ export default function OrientationV2Page() {
 
             case "emergencyContactPhone":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Emergency contact: Phone number <span className="text-red-600">*</span>
+                                Emergency Contact Phone <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="emergencyContactPhone"
-                                type="tel"
                                 value={formData.emergencyContactPhone}
                                 onChange={handleChange}
-                                placeholder="Enter emergency contact phone"
+                                placeholder="Phone number"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -665,17 +748,18 @@ export default function OrientationV2Page() {
 
             case "emergencyContactEmail":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Emergency contact: Email address <span className="text-red-600">*</span>
+                                Emergency Contact Email <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="emergencyContactEmail"
-                                type="email"
                                 value={formData.emergencyContactEmail}
                                 onChange={handleChange}
-                                placeholder="Enter emergency contact email"
+                                placeholder="Email address"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -686,7 +770,7 @@ export default function OrientationV2Page() {
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Where did you hear about us? <span className="text-red-600">*</span>
+                                How did you hear about us? <span className="text-red-600">*</span>
                             </label>
                             <FormToggleGroup
                                 value={formData.sourceOfDiscovery}
@@ -716,17 +800,18 @@ export default function OrientationV2Page() {
 
             case "problematicSubstancesOther":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Please specify: <span className="text-red-600">*</span>
+                                Please specify the substance or behavior <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="problematicSubstancesOther"
-                                type="text"
                                 value={formData.problematicSubstancesOther}
                                 onChange={handleChange}
-                                placeholder="Enter the substance or behavior"
+                                placeholder="Specify here"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -750,18 +835,18 @@ export default function OrientationV2Page() {
 
             case "currentTreatmentProgramme":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Which treatment programme are you currently in?{" "}
-                                <span className="text-red-600">*</span>
+                                Which programme are you currently in? <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="currentTreatmentProgramme"
-                                type="text"
                                 value={formData.currentTreatmentProgramme}
                                 onChange={handleChange}
-                                placeholder="Enter treatment programme name"
+                                placeholder="Programme name"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -821,7 +906,7 @@ export default function OrientationV2Page() {
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Which Recovery groups have you attended? <span className="text-red-600">*</span>
+                                Which recovery groups have you attended? <span className="text-red-600">*</span>
                             </label>
                             <FormToggleGroup
                                 value={formData.previousRecoveryGroupsNames}
@@ -850,17 +935,18 @@ export default function OrientationV2Page() {
 
             case "goalsForAttendingOther":
                 return (
-                    <StepContainer stepKey={currentStep} onEnterPress={handleNext}>
+                    <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Please specify your goals: <span className="text-red-600">*</span>
+                                Please specify your goals <span className="text-red-600">*</span>
                             </label>
                             <Input
                                 name="goalsForAttendingOther"
-                                type="text"
                                 value={formData.goalsForAttendingOther}
                                 onChange={handleChange}
-                                placeholder="Enter your goals"
+                                placeholder="Specify here"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -871,16 +957,16 @@ export default function OrientationV2Page() {
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                Is there anything important that we should know?{" "}
+                                Is there anything else important we should know?{" "}
                                 <span className="text-red-600">*</span>
                             </label>
-                            <textarea
+                            <Input
                                 name="anythingElseImportant"
                                 value={formData.anythingElseImportant}
                                 onChange={handleChange}
-                                placeholder="Share anything we should be aware of..."
-                                rows={4}
-                                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-lg shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                placeholder="Enter details"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -891,15 +977,15 @@ export default function OrientationV2Page() {
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-4">
                             <label className="block text-2xl font-semibold text-gray-900">
-                                How else would you like to be helped? <span className="text-red-600">*</span>
+                                How else can we help you? <span className="text-red-600">*</span>
                             </label>
-                            <textarea
+                            <Input
                                 name="howElseHelp"
                                 value={formData.howElseHelp}
                                 onChange={handleChange}
-                                placeholder="Let us know how we can support you..."
-                                rows={4}
-                                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-lg shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                placeholder="Enter details"
+                                className="h-12 text-lg"
+                                autoFocus
                             />
                         </div>
                     </StepContainer>
@@ -909,77 +995,66 @@ export default function OrientationV2Page() {
                 return (
                     <StepContainer stepKey={currentStep}>
                         <div className="space-y-6">
-                            <h2 className="text-2xl font-semibold text-gray-900">
-                                Review and accept consents
-                            </h2>
+                            <h3 className="text-xl font-semibold">Please review and agree to the following:</h3>
                             <div className="space-y-4">
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start space-x-3">
                                     <input
-                                        id="consentWhatsapp"
-                                        name="consentWhatsapp"
                                         type="checkbox"
+                                        name="consentWhatsapp"
                                         checked={formData.consentWhatsapp}
                                         onChange={handleChange}
-                                        className="h-5 w-5 mt-1 rounded border-gray-300"
+                                        className="mt-1 h-5 w-5 rounded border-gray-300 text-black focus:ring-black"
                                     />
-                                    <label htmlFor="consentWhatsapp" className="text-base text-gray-700">
-                                        I consent to be added to a WhatsApp Group. (Optional)
+                                    <label className="text-gray-700">
+                                        I consent to being added to the WhatsApp group.
                                     </label>
                                 </div>
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start space-x-3">
                                     <input
-                                        id="consentConfidentiality"
-                                        name="consentConfidentiality"
                                         type="checkbox"
+                                        name="consentConfidentiality"
                                         checked={formData.consentConfidentiality}
                                         onChange={handleChange}
-                                        className="h-5 w-5 mt-1 rounded border-gray-300"
+                                        className="mt-1 h-5 w-5 rounded border-gray-300 text-black focus:ring-black"
                                     />
-                                    <label htmlFor="consentConfidentiality" className="text-base text-gray-700">
-                                        I agree to the <span className="font-bold">Confidentiality</span> guidelines.{" "}
-                                        <span className="text-red-600">*</span>
+                                    <label className="text-gray-700">
+                                        I agree to maintain confidentiality regarding who I see and what is shared.
                                     </label>
                                 </div>
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start space-x-3">
                                     <input
-                                        id="consentAnonymity"
-                                        name="consentAnonymity"
                                         type="checkbox"
+                                        name="consentAnonymity"
                                         checked={formData.consentAnonymity}
                                         onChange={handleChange}
-                                        className="h-5 w-5 mt-1 rounded border-gray-300"
+                                        className="mt-1 h-5 w-5 rounded border-gray-300 text-black focus:ring-black"
                                     />
-                                    <label htmlFor="consentAnonymity" className="text-base text-gray-700">
-                                        I agree to the <span className="font-bold">Anonymity</span> guidelines.{" "}
-                                        <span className="text-red-600">*</span>
+                                    <label className="text-gray-700">
+                                        I understand that anonymity is a core principle of this group.
                                     </label>
                                 </div>
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start space-x-3">
                                     <input
-                                        id="consentLiability"
-                                        name="consentLiability"
                                         type="checkbox"
+                                        name="consentLiability"
                                         checked={formData.consentLiability}
                                         onChange={handleChange}
-                                        className="h-5 w-5 mt-1 rounded border-gray-300"
+                                        className="mt-1 h-5 w-5 rounded border-gray-300 text-black focus:ring-black"
                                     />
-                                    <label htmlFor="consentLiability" className="text-base text-gray-700">
-                                        I agree to the <span className="font-bold">Liability</span> waiver.{" "}
-                                        <span className="text-red-600">*</span>
+                                    <label className="text-gray-700">
+                                        I release the group and its facilitators from any liability.
                                     </label>
                                 </div>
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start space-x-3">
                                     <input
-                                        id="consentVoluntary"
-                                        name="consentVoluntary"
                                         type="checkbox"
+                                        name="consentVoluntary"
                                         checked={formData.consentVoluntary}
                                         onChange={handleChange}
-                                        className="h-5 w-5 mt-1 rounded border-gray-300"
+                                        className="mt-1 h-5 w-5 rounded border-gray-300 text-black focus:ring-black"
                                     />
-                                    <label htmlFor="consentVoluntary" className="text-base text-gray-700">
-                                        I confirm my attendance is <span className="font-bold">Voluntary</span>.{" "}
-                                        <span className="text-red-600">*</span>
+                                    <label className="text-gray-700">
+                                        I am attending this group voluntarily.
                                     </label>
                                 </div>
                             </div>
@@ -988,72 +1063,79 @@ export default function OrientationV2Page() {
                 );
 
             default:
-                return null;
+                return (
+                    <StepContainer stepKey={currentStep}>
+                        <div className="space-y-4">
+                            <label className="block text-2xl font-semibold text-gray-900">
+                                Debug: Unknown step "{stepName}"
+                            </label>
+                            <p className="text-base text-gray-600">
+                                Current step index: {currentStep}
+                            </p>
+                            <p className="text-base text-gray-600">
+                                Step name: {stepName}
+                            </p>
+                            <p className="text-sm text-red-600">
+                                This step is not implemented in the renderStep switch statement.
+                            </p>
+                        </div>
+                    </StepContainer>
+                );
         }
     };
 
     return (
         <TypeformLayout>
+            {showConfetti && <Confetti />}
             <Toaster />
-            {showConfetti && <Confetti recycle={false} numberOfPieces={500} />}
-
-            {/* Header with Progress Bar */}
             <TypeformHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                        {avatarUrl && formData.firstName && (
-                            <>
-                                <img
-                                    src={avatarUrl}
-                                    alt="Avatar"
-                                    className="h-10 w-10 rounded-full"
-                                />
-                                <span className="text-sm font-medium text-gray-700">
-                                    Welcome, {formData.firstName}! 👋
-                                </span>
-                            </>
-                        )}
+                        <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
+                        <h1 className="text-lg font-semibold text-gray-900">Orientation</h1>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">
-                            {currentStep + 1} of {totalSteps}
-                        </span>
-                    </div>
+                    {avatarUrl && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600 hidden sm:inline">{userEmail}</span>
+                            <img src={avatarUrl} alt="Avatar" className="h-8 w-8 rounded-full" />
+                        </div>
+                    )}
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
                     <div
-                        className="bg-green-600 h-2 rounded-full transition-all duration-300 ease-out"
-                        style={{ width: `${progressPercent}%` }}
+                        className="bg-black h-1.5 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
                     />
                 </div>
             </TypeformHeader>
 
-            {/* Content */}
-            <TypeformContent>{renderStep()}</TypeformContent>
+            <TypeformContent>
+                {/* <div className="mb-4 p-4 bg-yellow-100 border border-yellow-400 rounded">
+                    <p className="text-black font-bold">DEBUG: TypeformContent is rendering</p>
+                    <p className="text-black">Current step: {currentStep}</p>
+                    <p className="text-black">Step name: {steps[currentStep]}</p>
+                </div> */}
+                <div className="relative">
+                    {renderStep()}
+                </div>
+            </TypeformContent>
 
-            {/* Footer with Navigation */}
             <TypeformFooter>
                 <div className="flex items-center justify-between">
                     <Button
-                        type="button"
-                        onClick={handleBack}
+                        variant="ghost"
+                        onClick={handlePrevious}
                         disabled={currentStep === 0}
-                        variant="outline"
-                        className="min-w-[100px]"
+                        className={currentStep === 0 ? "invisible" : ""}
                     >
                         Back
                     </Button>
                     <Button
-                        type="button"
                         onClick={handleNext}
                         disabled={isSubmitting}
-                        className="min-w-[100px] bg-black hover:bg-gray-800"
+                        className="bg-black text-white hover:bg-gray-800"
                     >
-                        {currentStep === totalSteps - 1
-                            ? isSubmitting
-                                ? "Submitting..."
-                                : "Submit"
-                            : "Next"}
+                        {currentStep === totalSteps - 1 ? (isSubmitting ? "Submitting..." : "Submit") : "Next"}
                     </Button>
                 </div>
             </TypeformFooter>

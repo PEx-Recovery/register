@@ -1,0 +1,176 @@
+﻿Technical Specification: Full-Stack Register Application
+1. Project Overview
+This document specifies the requirements for the full-stack Register application, a robust and secure solution for managing member check-ins for Project Exodus recovery groups. The application will use Supabase as its primary database. The immediate architectural path will involve synchronising data with the existing Glide application to maintain ecosystem integrity, with a long-term goal of migrating to a single source of truth.
+2. Project Lifecycle & Architectural Path
+This project will be executed with a clear, phased approach.
+Phase 1: Discovery & Implementation
+The first and most critical task is to confirm the read/write capabilities of Glide's SQL data source feature.
+* Objective: To determine if the Glide Enterprise plan allows for writing data back to an external Supabase database, not just reading from it and to discern how the Glide Charts components interact with the external database.
+* Outcome 1 (Write is Supported): If Glide can write to Supabase and interact with chart components well, the project will proceed with Architectural Path A.
+* Outcome 2 (Write is Not Supported / Read-Only): If Glide's connection is read-only and/or the chart components do not interact with the database, the project will proceed with Architectural Path B.
+
+Based on the discovery, one of the following architectures will be implemented:
+Architectural Path A: Single Source of Truth
+This is the preferred, simpler model. The Supabase database serves as the single, central data store. Both the new full-stack Register application and the existing Glide app will read and write to the same database directly.
+Architectural Path B: Dual-Write Synchronisation
+This model will be used if Glide cannot write to Supabase.
+   * Primary Database: Supabase remains the primary database for the new application.
+   * Asynchronous Sync: An asynchronous background process will be implemented to push data from Supabase to Glide's native tables via API calls.
+   * Deprecation Flag: A feature flag (ENABLE_GLIDE_SYNC) will be included to disable this synchronisation process once the Glide app is fully deprecated.
+
+
+   * Architectural Decision: Based on the need to maintain integration with the broader Project Exodus ecosystem (e.g., Pulse), the project will proceed with Architectural Path B: Dual-Write Synchronization as the mandatory initial implementation. This ensures that existing applications that rely on Glide data continue to function without interruption.
+   * Synchronisation Method: The asynchronous sync from Supabase to Glide should be near real-time to provide timely feedback to facilitators using the legacy system. This replaces the idea of a less frequent cron job.
+   * Long-Term Discovery: The discovery task to confirm the read/write capabilities of Glide's SQL data source feature remains a valuable long-term goal. The findings will inform the eventual full migration away from the dual-write model to the simpler Architectural Path A: Single Source of Truth.
+3. Future-Ready Architecture: PEX ID & Digital Passes
+While not intended for immediate user release, the application's architecture will be built to support a unique identifier system, the PEX ID, from the outset.
+   * Unique Identifier: A new, unique pex_id will be generated and assigned to every member upon creation. This ID will serve as a persistent identifier for the user across the entire Project Exodus ecosystem.
+   * Digital Pass Generation: The system will be designed with the capability to generate a digital pass for each member (e.g., for Apple Wallet or Google Wallet). This feature will be built into the backend but not exposed in the UI initially.
+   * Note: Further research into services like PassSlot.com is recommended for implementation.
+   * Scannable & Secure: The digital pass will be scannable. When scanned by a facilitator, the system should display a confirmation screen with the member's details, including their first_name and profile_picture_url, to verify their identity and prevent pass sharing.
+4. Technology Stack
+   * Frontend: Next.js with Shadcn/ui & Tailwind CSS
+   * Backend: Node.js REST API
+   * Primary Database: Supabase (PostgreSQL)
+
+
+5. Application Screens & User Flow
+This section outlines the primary screens of the application and the user's journey through them.
+5.1 Welcome Screen
+   * Purpose: The single entry point for all users to begin the check-in process.
+   * Components:
+   * Email address input field.
+   * Group selection dropdown menu.
+   * A checkbox for users checking in with "No Email".
+   * User Action: The user fills in the required information and submits, which triggers the /api/check-in endpoint to determine the next step.
+5.2 Basic Info Screen
+   * Purpose: To capture essential demographic information. This screen serves two user paths:
+   1. It's the only data capture screen for users with "No Email".
+   2. It's the first of two screens for new members or existing members who need to complete their orientation.
+   * Functionality: Upon submission, the data is sent to the /api/orientation/part1 endpoint. For new/non-oriented members, this action also successfully checks them into the group for the day, ensuring their attendance is logged even if they don't complete the next step.
+   * Next Step: "No Email" users are directed to the Check-in Complete screen. New/non-oriented members proceed to the Research Questions screen.
+5.3 Research Questions Screen
+   * Purpose: To capture the detailed, in-depth orientation and research questions required for new members. This is the second and final data capture screen for the orientation process.
+   * User Action: The user completes the form and submits. The data is sent to the /api/orientation/part2 endpoint, which marks their orientation as complete in the system.
+   * Next Step: Users are directed to the Check-in Complete screen.
+5.4 Check-in Complete Screen
+   * Purpose: A confirmation screen is displayed to all users who successfully complete their respective check-in flow (returning members, "No Email" users, and users who have just completed orientation).
+   * Functionality: Displays a success message. After a short, predefined delay (e.g., 5 seconds), the application will automatically redirect back to the Welcome Screen, ready for the next user.
+6. Key Business Rules
+   * Geolocation Verification: Users can only check into a group if their device's current location is within a reasonable proximity (e.g., 200 meters) of the group's physical address.
+   * Time-Gated Check-ins: Users can only check into a group on the specific day of the week that the group meeting is scheduled.
+   * Duplicate Check-in Prevention: A member may only check into the same group once per calendar day.
+   * Duplicate Member Prevention: The system will use the member's email address as a unique key to prevent duplicate profiles. The API architecture will be designed to potentially incorporate other unique identifiers (like phone numbers) in the future.
+7. Database Schema (Supabase)
+
+CREATE TABLE groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    location_text TEXT,
+    latitude NUMERIC NOT NULL,  -- For Geolocation
+    longitude NUMERIC NOT NULL, -- For Geolocation
+    day_of_week INT NOT NULL, -- 1 = Monday, 7 = Sunday
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+CREATE TABLE members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pex_id TEXT UNIQUE NOT NULL, -- Unique Project Exodus Identifier
+    first_name TEXT,
+    last_name TEXT,
+    email TEXT UNIQUE,
+    phone_number TEXT,
+    profile_picture_url TEXT, -- For Digital Pass UI
+    orientation_complete BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+CREATE TABLE orientation_details (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    date_of_birth DATE,
+    ethnicity TEXT,
+    gender TEXT,
+    -- Additional orientation fields...
+    completed_at TIMESTAMPTZ
+    -- Note: ON DELETE CASCADE means if a member is deleted, their sensitive orientation data is also securely removed.
+);
+
+
+CREATE TABLE attendance_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID REFERENCES members(id) ON DELETE SET NULL,
+    group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    check_in_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_anonymous BOOLEAN NOT NULL DEFAULT false, -- Renamed to "No Email" in UI
+    anonymous_name TEXT,
+    anonymous_gender TEXT,
+    anonymous_age_range TEXT,
+    anonymous_ethnicity TEXT,
+    anonymous_recovery_type TEXT
+    -- Note: ON DELETE SET NULL means if a member is deleted, their attendance history is anonymized but not deleted.
+);
+
+
+8. API Specification & Logic Flow
+POST /api/check-in
+Purpose: The main endpoint to handle an initial check-in request and route the user. Designed to be extensible for multiple identifier types.
+   * Request Body Variables:
+   1. identifier: string (This will be the user's email for now)
+   2. identifierType: string (e.g., 'email', 'pexId', 'phone')
+   3. isNoEmail: boolean
+   4. groupId: string (UUID)
+   5. geolocation: { "latitude": number, "longitude": number }
+   * Logic Flow:
+   1. START with the request body variables.
+   2. Query the groups table using the groupId.
+   3. VALIDATE GEOLOCATION: Calculate the distance between the user's geolocation and the group's latitude/longitude. If the distance is greater than the allowed radius, respond with a 403 Forbidden error: "You must be at the group's location to check in."
+   4. VALIDATE TIME: Get the current day of the week in the group's timezone. If it does not match day_of_week, respond with a 403 Forbidden error: "Check-in is only available on the day of the group meeting."
+   5. CHECK NO EMAIL: If isNoEmail is true, respond with { "status": "NO_EMAIL_INFO_REQUIRED" }.
+   6. FIND MEMBER: Query the members table where the column matching identifierType (e.g., email) matches the identifier value.
+   * If the member does not exist: Create a new record in members with the provided email, a new pex_id, and orientation_complete = false. Store the new memberId. Respond with { "status": "ORIENTATION_REQUIRED", "memberId": "...", "isNewMember": true }.
+   * If member exists: Store the existing memberId.
+   7. VALIDATE DUPLICATE: Using the memberId and groupId, query the attendance_register table for a record on the current calendar day. If a record exists, respond with a 409 Conflict error: "You have already checked into this group today."
+   8. CHECK ORIENTATION: Fetch the member's orientation_complete status. If false, respond with { "status": "ORIENTATION_REQUIRED", "memberId": "...", "isNewMember": false }.
+   9. CREATE RECORD: Create a new record in the attendance_register table.
+   10. (Path B Only): Add a job to the queue to sync this new attendance record to Glide.
+   11. SUCCESS: Respond with { "status": "CHECKIN_COMPLETE", "memberId": "..." }.
+POST /api/orientation/part1
+Purpose: Submits basic information for "No Email" users or the first part of orientation.
+   * Request Body Variables:
+   1. isNoEmail: boolean
+   2. memberId: string | null (UUID)
+   3. groupId: string (UUID)
+   4. firstName: string
+   5. lastName: string
+   6. ... (and other basic info fields like gender, ethnicity, dateOfBirth or ageRange)
+   * Logic Flow:
+   1. START with the request body variables.
+   2. CHECK NO EMAIL:
+   * If isNoEmail is true: Create a new record in attendance_register using groupId. Populate the anonymous_... columns with the provided firstName, lastName, etc.
+   * If isNoEmail is false:
+   1. Update the record in the members table where id matches memberId, setting first_name, last_name, and profile_picture_url.
+   2. Create a record in orientation_details linked to memberId, populating it with dateOfBirth, gender, etc.
+   3. Create a record in attendance_register with the memberId and groupId.
+   3. (Path B Only): If implementing dual-write, add a job to the queue to sync the new attendance record and the updated member/orientation data to Glide.
+   4. SUCCESS: Respond with { "status": "SUCCESS" }.
+POST /api/orientation/part2
+Purpose: Submits the detailed orientation data and completes the process for a member.
+   * Request Body Variables:
+   1. memberId: string (UUID)
+   2. emergencyContactName: string
+   3. ... (all other detailed orientation fields)
+   * Logic Flow:
+   1. START with the request body variables.
+   2. UPDATE DETAILS: Find the record in orientation_details where member_id matches the request memberId. Update this record with all the provided orientation data.
+   3. COMPLETE ORIENTATION: Find the record in the members table where id matches memberId. Set the orientation_complete flag to true and update the updated_at timestamp.
+   4. (Path B Only): If implementing dual-write, add a job to the queue to sync the updated orientation and member completion status to Glide.
+   5. SUCCESS: Respond with { "status": "SUCCESS" }.
+9. Next Steps: UI Component Mapping
+As a subsequent task following this specification, a mapping exercise should be undertaken to identify the specific shadcn/ui components that correspond to each required screen and form element. This will accelerate the frontend development process.

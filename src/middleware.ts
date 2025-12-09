@@ -68,7 +68,7 @@ export async function middleware(request: NextRequest) {
   const status = request.cookies.get('app_status')?.value;
 
   // Define our application pages
-  const orientationPage = '/orientation';
+  const orientationPage = '/orientation-v2';
   const basicInfoPage = '/basic-info';
   const completePage = '/complete';
   const homePage = '/'; // The page.tsx we've been editing

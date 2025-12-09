@@ -8,9 +8,12 @@
     "start": "next start",
     "lint": "next lint",
     "import-groups": "tsx scripts/import-groups.ts",
-    "clear-groups": "tsx scripts/clear-groups.ts"
+    "clear-groups": "tsx scripts/clear-groups.ts",
+    "import-row-ids": "tsx scripts/import-glide-row-ids.ts",
+    "add-missing-groups": "tsx scripts/add-missing-groups.ts"
   },
   "dependencies": {
+    "@glideapps/tables": "^1.0.21",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-dialog": "^1.1.15",
