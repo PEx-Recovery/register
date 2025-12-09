@@ -19,3 +19,17 @@ curls
 .npm-cache
 .next
 .cursor
+
+# Local Netlify state
+.netlify
+# Supabase functions env
+supabase/functions/.env
+# Backups
+*.backup
+# Data files
+*.csv
+# Temp SQL dumps (but allow migrations and scripts)
+*.sql
+!supabase/migrations/*.sql
+!scripts/*.sql
+
